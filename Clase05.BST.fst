@@ -36,20 +36,39 @@ let rec insert0 (x: int) (t: bst0) : bst0 =
     else if x < y then N (insert0 x l, y, r)
     else N (l, y, insert0 x r)
 
-let insert0_all_lt (x:int) (t:bst0) (y:int)
+let rec insert0_all_lt (x:int) (t:bst0) (y:int)
   : Lemma (requires all_lt y t /\ x < y)
           (ensures all_lt y (insert0 x t))
-  =
-  admit()
+= match t with
+  | L -> ()
+  | N (l, z, r) -> 
+    if x = z then ()
+    else if x < z 
+    then insert0_all_lt x l y
+    else insert0_all_lt x r y
 
-let insert0_all_gt (x:int) (t:bst0) (y:int)
+let rec insert0_all_gt (x:int) (t:bst0) (y:int)
   : Lemma (requires all_gt y t /\ x > y)
           (ensures all_gt y (insert0 x t))
-  =
-  admit()
+= match t with
+  | L -> ()
+  | N (l, z, r) -> 
+    if x = z then ()
+    else if x < z 
+    then insert0_all_gt x l y
+    else insert0_all_gt x r y
 
-let insert0_bst (x:int) (t:bst0) : Lemma (requires is_bst t) (ensures is_bst (insert0 x t)) =
-  admit()
+let rec insert0_bst (x:int) (t:bst0) :
+  Lemma (requires is_bst t)
+        (ensures is_bst (insert0 x t))
+= match t with
+  | L -> ()
+  | N (l, y, r) -> 
+  if x = y then ()
+  else if x < y
+  then (insert0_all_lt x l y;insert0_bst x l)
+  else (insert0_all_gt x r y;insert0_bst x r)
+
 
 let insert (x:int) (t:bst) : bst =
   insert0_bst x t;
@@ -72,8 +91,49 @@ let rec member (x: int) (t: bst) : bool =
     else if x > y then member x r
     else true
 
-let member_ok (x:int) (t:bst) : Lemma (member x t == in_tree x t) =
-  admit()
+let rec all_lt_lemma (x:int) (t:bst0) (y:int) :
+  Lemma (requires x >= y /\ all_lt y t)
+        (ensures all_lt x t)
+= match t with
+  | L -> ()
+  | N (l, z, r) -> 
+  all_lt_lemma x l y;
+  all_lt_lemma x r y
+
+let rec all_gt_lemma (x:int) (t:bst0) (y:int) :
+  Lemma (requires x <= y /\ all_gt y t)
+        (ensures all_gt x t)
+= match t with
+  | L -> ()
+  | N (l, z, r) -> 
+  all_gt_lemma x l y;
+  all_gt_lemma x r y
+
+let rec not_in (x:int) (t:bst) :
+  Lemma (requires all_gt x t \/ all_lt x t)
+        (ensures ~(in_tree x t))
+= match t with
+  | L -> ()
+  | N (l,y,r) -> 
+    not_in x l;
+    not_in x r
+
+let rec member_ok (x:int) (t:bst) :
+  Lemma (member x t == in_tree x t) 
+= match t with
+  | L -> ()
+  | N (l, y, r) -> 
+    if x = y then () 
+    else if x < y
+    then (
+      all_gt_lemma x r y;
+      not_in x r;
+      member_ok x l
+    ) else (
+      all_lt_lemma x l y;
+      not_in x l;
+      member_ok x r
+    ) 
 
 let rec to_list (t: bst) : list int =
   match t with
@@ -119,11 +179,9 @@ let rec insert_mem (x:int) (t:bst) : Lemma (member x (insert x t)) =
     else insert_mem x r
 
 let all_lt_trans (x y : int) (t : bst0) : Lemma (requires all_lt x t /\ y >= x) (ensures all_lt y t) =
-  admit()
-
+  all_lt_lemma y t x
 let all_gt_trans (x y : int) (t : bst0) : Lemma (requires all_gt x t /\ y <= x) (ensures all_gt y t) =
-  admit()
-
+  all_gt_lemma y t x
 // NB: cambiado para fortalecer la precondición, y no devolver una opción.
 let rec extract_min0 (t: bst0{N? t}) : int & bst0 =
   match t with
@@ -133,19 +191,34 @@ let rec extract_min0 (t: bst0{N? t}) : int & bst0 =
     let t : bst0 = N (l', x, r) in
     (min, t)
 
-let extract_min_preserva_all_lt (y:int) (t : bst0{N? t})
+let rec extract_min_preserva_all_lt (y:int) (t : bst0{N? t})
   : Lemma (requires is_bst t /\ all_lt y t)
           (ensures all_lt y (snd (extract_min0 t)))
-= admit()
+= match t with 
+  | N (L, x, r) -> ()
+  | N (l, x , r) -> 
+    extract_min_preserva_all_lt y l
+    
 
-let extract_min_es_bst (t:bst0{N? t})
+let rec extract_min_es_bst (t:bst0{N? t})
 : Lemma (requires is_bst t)
         (ensures is_bst (snd (extract_min0 t)))
-=
-  admit()
+= match t with 
+  | N (L, x, r) -> ()
+  | N (l, x , r) -> 
+    extract_min_preserva_all_lt x l;
+    extract_min_es_bst l
+  
 
 let extract_min (t: bst{N? t}) : (int & bst) =
-  admit()
+  match t with 
+  | N (L, x ,r ) -> (x, r)
+  | N (l, x, r) -> 
+    let (y, t') = extract_min0 l in
+    extract_min_preserva_all_lt x l;
+    extract_min_es_bst l;
+    (y, t')
+
 
 let delete_root0 (t: bst0{N? t}) : bst0 =
   let N (l, _, r) = t in
